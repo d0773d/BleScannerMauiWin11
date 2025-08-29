@@ -29,6 +29,10 @@ namespace BleScannerMaui
 
         private bool _userInitiatedDisconnect = false;
 
+        private bool _wifiReady;
+        public event Action<bool>? WifiReadyChanged;
+
+
         public async Task ProvisionWifiAsync(string ssid, string password)
         {
             if (ConnectedDevice is null)
@@ -284,12 +288,7 @@ namespace BleScannerMaui
             try
             {
                 _log.Append("Discovering target service...");
-
-                Guid serviceGuid = Guid.Parse("A7EEDF2C-DA8C-4CB5-A9C5-5151C78B0057");
-                Guid writeGuid = Guid.Parse("A7EEDF2C-DA90-4CB5-A9C5-5151C78B0057");
-                Guid notifyGuid = Guid.Parse("A7EEDF2C-DA91-4CB5-A9C5-5151C78B0057");
-
-                var service = await device.GetServiceAsync(serviceGuid);
+                var service = await device.GetServiceAsync(SERVICE_UUID);
                 if (service == null)
                 {
                     _log.Append("Target service not found.");
@@ -297,8 +296,8 @@ namespace BleScannerMaui
                 }
                 _log.Append($"Found target service: {service.Id}");
 
-                var writeChar = await service.GetCharacteristicAsync(writeGuid);
-                var notifyChar = await service.GetCharacteristicAsync(notifyGuid);
+                var writeCmdChar = await service.GetCharacteristicAsync(CMD_CHAR_UUID);
+                var notifyChar = await service.GetCharacteristicAsync(NOTIFY_CHAR_UUID);
 
                 if (notifyChar == null)
                 {
@@ -308,9 +307,10 @@ namespace BleScannerMaui
 
                 if (notifyChar.CanUpdate)
                 {
+                    _notifyCharacteristic = notifyChar; // <-- keep a ref so we can stop later
                     _log.Append($"Subscribing to notify characteristic {notifyChar.Id}...");
-                    notifyChar.ValueUpdated += Characteristic_ValueUpdated;
-                    await notifyChar.StartUpdatesAsync();
+                    _notifyCharacteristic.ValueUpdated += Characteristic_ValueUpdated;
+                    await _notifyCharacteristic.StartUpdatesAsync();
                     _log.Append("Subscribed successfully.");
                 }
                 else
@@ -319,12 +319,11 @@ namespace BleScannerMaui
                     return;
                 }
 
-                if (writeChar != null && writeChar.CanWrite)
+                if (writeCmdChar != null && writeCmdChar.CanWrite)
                 {
-                    _log.Append($"Writing 0x01 to write characteristic {writeChar.Id}...");
-                    var data = new byte[] { 0x01 };
-                    await writeChar.WriteAsync(data);
-                    _log.Append("Write successful.");
+                    _log.Append($"Writing 0x01 to write characteristic {writeCmdChar.Id}...");
+                    await writeCmdChar.WriteAsync(new byte[] { 0x01 });   // <-- signal device
+                    _log.Append("Write successful (sent 0x01).");
                 }
                 else
                 {
@@ -337,14 +336,32 @@ namespace BleScannerMaui
             }
         }
 
+
         void Characteristic_ValueUpdated(object sender, CharacteristicUpdatedEventArgs e)
         {
             try
             {
-                var data = e.Characteristic.Value;
-                string hex = data != null ? BitConverter.ToString(data) : "(null)";
-                var readable = data != null ? System.Text.Encoding.UTF8.GetString(data) : "";
-                _log.Append($"Notification from {e.Characteristic.Id}: HEX={hex} ASCII='{readable}'");
+                var data = e.Characteristic?.Value;
+                if (data == null || data.Length == 0)
+                {
+                    _log.Append("Notification received: (no data)");
+                    return;
+                }
+
+                if (data[0] == 2)
+                {
+                    _log.Append("Received 0x02 — device ready for Wi-Fi credentials.");
+                    if (!_wifiReady)
+                    {
+                        _wifiReady = true;
+                        WifiReadyChanged?.Invoke(true);
+                    }
+                }
+                else
+                {
+                    _log.Append($"Received data with first byte {data[0]}, not 0x02.");
+                }
+
             }
             catch (Exception ex)
             {
