@@ -3,46 +3,23 @@ using Plugin.BLE.Abstractions;
 using Plugin.BLE.Abstractions.Contracts;
 using Plugin.BLE.Abstractions.EventArgs;
 using System.Collections.ObjectModel;
+using System.Text;
+using System.Linq;
+using System.Collections.Generic;
 
 namespace BleScannerMaui
 {
     public partial class BluetoothService : IBluetoothService
     {
         // UUIDs for Wi‑Fi provisioning characteristics (adjust if your firmware differs)
-        private static readonly Guid WIFI_SERVICE_UUID = new Guid("6E400001-B5A3-F393-E0A9-E50E24DCCA9E");
-        private static readonly Guid SSID_UUID         = new Guid("6E400002-B5A3-F393-E0A9-E50E24DCCA9E");
-        private static readonly Guid PASSWORD_UUID     = new Guid("6E400003-B5A3-F393-E0A9-E50E24DCCA9E");
-        private static readonly Guid STATUS_UUID       = new Guid("6E400004-B5A3-F393-E0A9-E50E24DCCA9E");
+        // nanoFramework Wi-Fi Provisioning UUIDs
+        private static readonly Guid SERVICE_UUID = new Guid("A7EEDF2C-DA8C-4CB5-A9C5-5151C78B0057");
+        private static readonly Guid CMD_CHAR_UUID = new Guid("A7EEDF2C-DA8F-4CB5-A9C5-5151C78B0057");
+        private static readonly Guid READ_CHAR_UUID = new Guid("A7EEDF2C-DA90-4CB5-A9C5-5151C78B0057");
+        private static readonly Guid NOTIFY_CHAR_UUID = new Guid("A7EEDF2C-DA91-4CB5-A9C5-5151C78B0057");
+        private static readonly Guid WIFI_CRED_CHAR_UUID = new Guid("A7EEDF2C-DA92-4CB5-A9C5-5151C78B0057");
 
-        public async Task ProvisionWifiAsync(string ssid, string password)
-        {
-            if (ConnectedDevice is null)
-                throw new InvalidOperationException("Not connected to a BLE device.");
 
-            try
-            {
-                var service = await ConnectedDevice.GetServiceAsync(WIFI_SERVICE_UUID);
-                if (service == null)
-                    throw new InvalidOperationException("Wi‑Fi service not found on device.");
-
-                var ssidChar = await service.GetCharacteristicAsync(SSID_UUID);
-                var pwdChar  = await service.GetCharacteristicAsync(PASSWORD_UUID);
-
-                if (ssidChar == null || pwdChar == null)
-                    throw new InvalidOperationException("SSID or Password characteristic not found.");
-
-                await ssidChar.WriteAsync(System.Text.Encoding.UTF8.GetBytes(ssid));
-                await pwdChar.WriteAsync(System.Text.Encoding.UTF8.GetBytes(password));
-
-                _log.Append($"Sent Wi‑Fi credentials (SSID length {ssid?.Length ?? 0}).");
-            }
-            catch (Exception ex)
-            {
-                _log.Append($"ProvisionWifiAsync failed: {ex.Message}");
-                throw;
-            }
-        }
-        
         readonly IAdapter _adapter;
         readonly IBluetoothLE _ble;
         readonly ILogService _log;
@@ -51,6 +28,38 @@ namespace BleScannerMaui
         readonly ObservableCollection<IDevice> _devices = new();
 
         private bool _userInitiatedDisconnect = false;
+
+        public async Task ProvisionWifiAsync(string ssid, string password)
+        {
+            if (ConnectedDevice is null)
+                throw new InvalidOperationException("Not connected to a BLE device.");
+
+            try
+            {
+                // 1) Get our nanoFramework provisioning service
+                var service = await ConnectedDevice.GetServiceAsync(SERVICE_UUID);
+                if (service is null)
+                    throw new InvalidOperationException("Wi-Fi provisioning service not found on device.");
+
+                // 2) Get the single Wi-Fi credentials characteristic
+                var credsChar = await service.GetCharacteristicAsync(WIFI_CRED_CHAR_UUID);
+                if (credsChar is null)
+                    throw new InvalidOperationException("Wi-Fi credentials characteristic not found on device.");
+
+                // 3) Send credentials in one payload.
+                //    Choose a simple, unambiguous format you also parse on the device.
+                //    Here we use: SSID '\0' PASSWORD
+                var payload = System.Text.Encoding.UTF8.GetBytes($"{ssid}\0{password}");
+
+                await credsChar.WriteAsync(payload);
+                _log.Append($"Sent Wi-Fi credentials (SSID length {ssid?.Length ?? 0}).");
+            }
+            catch (Exception ex)
+            {
+                _log.Append($"ProvisionWifiAsync failed: {ex}"); // keep your existing logging call
+                throw;
+            }
+        }
 
         public BluetoothService(ILogService log)
         {
