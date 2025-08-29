@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<Shell
+    x:Class="BleScannerMaui.AppShell"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:pages="clr-namespace:BleScannerMaui.Pages"
+    xmlns:local="clr-namespace:BleScannerMaui">
+
+  <TabBar>
+    <Tab Title="Scanner">
+      <ShellContent
+        Title="BLE Scanner"
+        Route="scanner"
+        ContentTemplate="{DataTemplate local:MainPage}" />
+    </Tab>
+    <Tab Title="Wi‑Fi">
+      <ShellContent
+        Title="Wi‑Fi Provision"
+        Route="wifi"
+        ContentTemplate="{DataTemplate pages:WifiProvisioningPage}" />
+    </Tab>
+  </TabBar>
+
+</Shell>

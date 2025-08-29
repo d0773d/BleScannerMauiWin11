@@ -1,0 +1,11 @@
+{
+  "profiles": {
+    "Windows (Unpackaged)": {
+      "commandName": "Project",
+      "nativeDebugging": false
+    },
+    "Windows (Packaged)": {
+      "commandName": "MsixPackage"
+    }
+  }
+}
